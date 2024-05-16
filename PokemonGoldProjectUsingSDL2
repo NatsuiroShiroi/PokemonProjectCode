@@ -1,0 +1,128 @@
+// Include SDL2.0 library
+#include <SDL.h>
+#include <SDL_image.h>
+#include <string>
+
+class Pokemon {
+public:
+    Pokemon(std::string name, int hp, int attack, int defense)
+        : name_(name), hp_(hp), attack_(attack), defense_(defense) {}
+
+    std::string getName() { return name_; }
+    int getHP() { return hp_; }
+    int getAttack() { return attack_; }
+    int getDefense() { return defense_; }
+
+private:
+    std::string name_;
+    int hp_;
+    int attack_;
+    int defense_;
+};
+
+class TextureManager {
+public:
+    static SDL_Texture* loadTexture(const std::string& fileName, SDL_Renderer* renderer) {
+        // Load texture from file using SDL_image
+        SDL_Texture* texture = nullptr;
+        // Implement texture loading logic here
+        SDL_Surface* surface = IMG_Load(fileName.c_str());
+        if (surface) {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_FreeSurface(surface);
+        }
+        return texture;
+    }
+};
+
+class Game {
+public:
+    Game();
+    ~Game();
+
+    bool init();
+    void handleEvents();
+    void update();
+    void render();
+    void quit();
+
+    bool isRunning() { return isRunning_; }
+
+private:
+    bool isRunning_;
+    SDL_Window* window_;
+    SDL_Renderer* renderer_;
+    // Add a texture member variable
+    SDL_Texture* texture_;
+    // Add other game variables and objects here
+};
+
+Game::Game() : isRunning_(true) {}
+
+Game::~Game() {
+    quit();
+}
+
+// Load the texture in the Game::init() method
+bool Game::init() {
+    // Initialize SDL and create window and renderer
+    SDL_Init(SDL_INIT_VIDEO);
+    window_ = SDL_CreateWindow(u8"Pokémon Gold", 100, 100, 320, 288, SDL_WINDOW_SHOWN);
+    renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED);
+    // Load the new_bark_town image
+    texture_ = TextureManager::loadTexture("D:/PokemonProjectAssets/new_bark_town.png", renderer_);
+    // Load necessary resources, such as textures and fonts
+    return true;
+}
+
+void Game::handleEvents() {
+    // Handle user input and other events
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            isRunning_ = false;
+        }
+    }
+}
+
+void Game::update() {
+    // Update game state, such as Pokémon positions and stats
+}
+
+// Render the texture in the Game::render() method
+void Game::render() {
+    // Set background color to white
+    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+    // Render game graphics, such as the game world and Pokémon
+    SDL_RenderClear(renderer_);
+        // Render the texture
+        SDL_Rect rect = { 0, 0, 320, 288 };
+    // Set the rendering rectangle
+    SDL_RenderCopy(renderer_, texture_, nullptr, &rect);
+    // Draw Pokémon and other game elements
+    SDL_RenderPresent(renderer_);
+}
+
+// Don't forget to free the texture in the Game::quit() method
+void Game::quit() {
+    // Clean up resources and quit SDL
+    SDL_DestroyTexture(texture_);
+    SDL_DestroyRenderer(renderer_);
+    SDL_DestroyWindow(window_);
+    SDL_Quit();
+}
+
+int main(int argc, char** argv) {
+    Game game;
+    if (!game.init()) {
+        return 1;
+    }
+
+    while (game.isRunning()) {
+        game.handleEvents();
+        game.update();
+        game.render();
+    }
+
+    return 0;
+}
