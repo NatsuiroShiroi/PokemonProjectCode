@@ -1,0 +1,262 @@
+#include <SDL.h>
+#include <SDL_image.h>
+#include <string>
+#include <stdexcept>
+
+class Box {
+public:
+    Box() : x_(0), y_(0), width_(0), height_(0) {} // Default constructor
+    Box(int x, int y, int width, int height) : x_(x), y_(y), width_(width), height_(height) {}
+
+    int getX() { return x_; }
+    int getY() { return y_; }
+    int getWidth() { return width_; }
+    int getHeight() { return height_; }
+
+private:
+    int x_;
+    int y_;
+    int width_;
+    int height_;
+};
+
+class Texture {
+public:
+    Texture(SDL_Texture* texture, int width, int height)
+        : texture_(texture), width_(width), height_(height), numBoxesX_(width / 16), numBoxesY_(height / 16) {
+        boxes_ = new Box * [numBoxesY_];
+        if (boxes_ == nullptr) {
+            throw std::runtime_error("Failed to allocate memory for boxes_");
+        }
+        for (int y = 0; y < numBoxesY_; y++) {
+            boxes_[y] = new Box[numBoxesX_];
+            if (boxes_[y] == nullptr) {
+                throw std::runtime_error("Failed to allocate memory for boxes_[y]");
+            }
+            for (int x = 0; x < numBoxesX_; x++) {
+                boxes_[y][x] = Box(x * 16, y * 16, 16, 16);
+            }
+        }
+    };
+
+    ~Texture() {
+        if (boxes_ != nullptr) {
+            for (int y = 0; y < numBoxesY_; y++) {
+                if (boxes_[y] != nullptr) {
+                    delete[] boxes_[y];
+                }
+            }
+            delete[] boxes_;
+        }
+    }
+
+    Box* getBox(int x, int y) {
+        if (x < 0 || x >= numBoxesX_ || y < 0 || y >= numBoxesY_) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return &boxes_[y][x]; // Return a pointer to the Box object
+    }
+
+    int getWidth() { return width_; }
+    int getHeight() { return height_; }
+
+    SDL_Texture* getTexture() { return texture_; }
+
+private:
+    SDL_Texture* texture_;
+    int width_;
+    int height_;
+    int numBoxesX_;
+    int numBoxesY_;
+    Box** boxes_;
+};
+
+class TextureManager {
+public:
+    static SDL_Texture* loadTexture(const std::string& fileName, SDL_Renderer* renderer, SDL_Window* window) {
+        // Load texture from file using SDL_image
+        SDL_Texture* texture = nullptr;
+        // Implement texture loading logic here
+        SDL_Surface* surface = IMG_Load(fileName.c_str());
+
+        if (surface) {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_FreeSurface(surface);
+
+            if (texture == nullptr) {
+                printf("Failed to create texture: %s", SDL_GetError());
+                return nullptr;
+            }
+
+            // Divide the texture into 16x16 pixel boxes
+            int width, height;
+            SDL_QueryTexture(texture, nullptr, nullptr, &width, &height);
+            int numBoxesX = width / 16;
+            int numBoxesY = height / 16;
+            for (int y = 0; y < numBoxesY; y++) {
+                for (int x = 0; x < numBoxesX; x++) {
+                    SDL_Rect boxRect = { x * 16, y * 16, 16, 16 };
+                    // You can now use the boxRect to manipulate or render each 16x16 pixel box
+                    // For example, you could render each box separately:
+                    // SDL_RenderCopy(renderer, texture, &boxRect, &boxRect);
+                    // Draw a light gray rectangle around each box
+                    SDL_Color lightGray = { 200, 200, 200, 255 }; // RGB values for light gray
+                    SDL_SetRenderDrawColor(renderer, lightGray.r, lightGray.g, lightGray.b, lightGray.a);
+                    SDL_RenderDrawRect(renderer, &boxRect);
+                }
+            }
+        }
+        else {
+            printf("Failed to load image: %s", IMG_GetError());
+            return nullptr;
+        }
+        return texture;
+    }
+};
+
+class MainCharacter {
+public:
+    MainCharacter(SDL_Renderer* renderer) : mainCharacterFrontTexture_(nullptr), mainCharacterFrontSprite_(nullptr) {
+        mainCharacterFrontTexture_ = TextureManager::loadTexture("D:/PokemonProjectAssets/main_character_front_texture.png", renderer, nullptr); // Load the main character front texture
+        if (mainCharacterFrontTexture_ == nullptr) {
+            printf("Failed to load main character front texture: %s", SDL_GetError());
+            return;
+        }
+
+        mainCharacterFrontSprite_ = new Texture(mainCharacterFrontTexture_, 16, 16); // Create the main character front sprite
+    }
+
+    ~MainCharacter() {
+        if (mainCharacterFrontTexture_ != nullptr) {
+            SDL_DestroyTexture(mainCharacterFrontTexture_);
+        }
+        if (mainCharacterFrontSprite_ != nullptr) {
+            delete mainCharacterFrontSprite_;
+        }
+    }
+
+    Texture* getMainCharacterFrontSprite() {
+        return mainCharacterFrontSprite_;
+    }
+
+private:
+    SDL_Texture* mainCharacterFrontTexture_;
+    Texture* mainCharacterFrontSprite_;
+};
+
+class Game {
+public:
+    Game() : texture_(nullptr), renderer_(nullptr), window_(nullptr), width_(0), height_(0), textureMatrix_(nullptr), isRunning_(true), mainCharacter_(nullptr) {}
+
+    ~Game() {
+        quit();
+    }
+
+    bool init() {
+        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+            return false;
+        }
+        window_ = SDL_CreateWindow(u8"Pokémon Gold", 100, 100, 320, 288, SDL_WINDOW_SHOWN);
+        renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED);
+
+        mainCharacter_ = new MainCharacter(renderer_); // Initialize the main character
+        if (mainCharacter_ == nullptr) {
+            return false;
+        }
+
+        texture_ = TextureManager::loadTexture("D:/PokemonProjectAssets/new_bark_town.png", renderer_, window_);
+        width_ = 320;
+        height_ = 288;
+
+        textureMatrix_ = new Texture(texture_, width_, height_);
+        return true;
+    }
+
+    void handleEvents() { // Handle user input and other events
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                isRunning_ = false;
+            }
+        }
+    }
+
+    void update() { // Update game state, such as Pokémon positions and stats
+        
+    }
+
+    void render() {
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        SDL_RenderClear(renderer_);
+        SDL_Rect rect = { 0, 0, 320, 288 };
+        SDL_RenderCopy(renderer_, texture_, nullptr, &rect);
+
+        if (mainCharacter_ != nullptr) {
+            Texture* mainCharacterFrontSprite = mainCharacter_->getMainCharacterFrontSprite();
+            if (mainCharacterFrontSprite != nullptr) {
+                SDL_Rect mainCharacterRect = { 160, 120, 16, 16 }; // example position and size
+                SDL_RenderCopy(renderer_, mainCharacterFrontSprite->getTexture(), nullptr, &mainCharacterRect);
+            }
+        }
+
+        SDL_Color lightGray = { 200, 200, 200, 255 }; // RGB values for light gray
+        SDL_SetRenderDrawColor(renderer_, lightGray.r, lightGray.g, lightGray.b, lightGray.a);
+        if (textureMatrix_ != nullptr) {
+            for (int y = 0; y < textureMatrix_->getHeight() / 16; y++) {
+                for (int x = 0; x < textureMatrix_->getWidth() / 16; x++) {
+                    Box* box = textureMatrix_->getBox(x, y);
+                    SDL_Rect boxRect = { box->getX(), box->getY(), box->getWidth(), box->getHeight() };
+                    SDL_RenderDrawRect(renderer_, &boxRect);
+                }
+            }
+        }
+        SDL_RenderPresent(renderer_);
+    }
+
+    void quit() { // Clean up resources and quit SDL
+        SDL_DestroyTexture(texture_);
+        SDL_DestroyRenderer(renderer_);
+        SDL_DestroyWindow(window_);
+        SDL_Quit();
+        if (textureMatrix_ != nullptr) {
+            delete textureMatrix_;
+            textureMatrix_ = nullptr; // Set to nullptr after deletion
+        }
+    }
+
+    bool isRunning() { return isRunning_; }
+
+private:
+    bool isRunning_;
+    SDL_Window* window_;
+    SDL_Renderer* renderer_;
+    SDL_Texture* texture_;
+    int width_;
+    int height_;
+    Texture* textureMatrix_;
+    MainCharacter* mainCharacter_; // Main character object
+    // Add other game variables and objects here
+};
+
+int main(int argc, char* argv[]) {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) { // Initialize SDL
+        printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
+            return 1;
+    }
+
+    Game game;
+    if (game.init()) {
+        while (game.isRunning()) {
+            game.handleEvents();
+            game.update();
+            game.render();
+            SDL_Delay(16);
+        }
+        game.quit(); // Call quit() to free resources
+    }
+    else {
+        return 1;
+    }
+    SDL_Quit(); // Quit SDL
+    return 0;
+}
