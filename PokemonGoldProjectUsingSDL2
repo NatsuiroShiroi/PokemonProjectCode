@@ -1,129 +1,263 @@
-// Include SDL2.0 library
 #include <SDL.h>
 #include <SDL_image.h>
 #include <string>
+#include <stdexcept>
 
-class Pokemon {
+class Box {
 public:
-    Pokemon(std::string name, int hp, int attack, int defense)
-        : name_(name), hp_(hp), attack_(attack), defense_(defense) {}
+Box() : x_(0), y_(0), width_(0), height_(0) {} // Default constructor
+Box(int x, int y, int width, int height) : x_(x), y_(y), width_(width), height_(height) {}
 
-    std::string getName() { return name_; }
-    int getHP() { return hp_; }
-    int getAttack() { return attack_; }
-    int getDefense() { return defense_; }
+int getX() { return x_; }
+int getY() { return y_; }
+int getWidth() { return width_; }
+int getHeight() { return height_; }
 
 private:
-    std::string name_;
-    int hp_;
-    int attack_;
-    int defense_;
+int x_;
+int y_;
+int width_;
+int height_;
+};
+
+class Texture {
+public:
+Texture(SDL_Texture* texture, int width, int height)
+: texture_(texture), width_(width), height_(height), numBoxesX_(width / 16), numBoxesY_(height / 16) {
+boxes_ = new Box * [numBoxesY_];
+if (boxes_ == nullptr) {
+throw std::runtime_error("Failed to allocate memory for boxes_");
+}
+for (int y = 0; y < numBoxesY_; y++) {
+boxes_[y] = new Box[numBoxesX_];
+if (boxes_[y] == nullptr) {
+throw std::runtime_error("Failed to allocate memory for boxes_[y]");
+}
+for (int x = 0; x < numBoxesX_; x++) {
+boxes_[y][x] = Box(x * 16, y * 16, 16, 16);
+}
+}
+}
+
+~Texture() {
+if (boxes_!= nullptr) {
+for (int y = 0; y < numBoxesY_; y++) {
+if (boxes_[y]!= nullptr) {
+delete[] boxes_[y];
+}
+}
+delete[] boxes_;
+}
+}
+
+Box* getBox(int x, int y) {
+if (x < 0 || x >= numBoxesX_ || y < 0 || y >= numBoxesY_) {
+throw std::out_of_range("Index out of bounds");
+}
+return &boxes_[y][x]; // Return a pointer to the Box object
+}
+
+int getWidth() { return width_; }
+int getHeight() { return height_; }
+
+SDL_Texture* getTexture() { return texture_; } // Added getTexture method
+
+private:
+SDL_Texture* texture_;
+int width_;
+int height_;
+int numBoxesX_;
+int numBoxesY_;
+Box** boxes_;
 };
 
 class TextureManager {
 public:
-    static SDL_Texture* loadTexture(const std::string& fileName, SDL_Renderer* renderer) {
-        // Load texture from file using SDL_image
-        SDL_Texture* texture = nullptr;
-        // Implement texture loading logic here
-        SDL_Surface* surface = IMG_Load(fileName.c_str());
-        if (surface) {
-            texture = SDL_CreateTextureFromSurface(renderer, surface);
-            SDL_FreeSurface(surface);
-        }
-        return texture;
-    }
+static SDL_Texture* loadTexture(const std::string& fileName, SDL_Renderer* renderer, SDL_Window* window) {
+// Load texture from file using SDL_image
+SDL_Texture* texture = nullptr;
+// Implement texture loading logic here
+SDL_Surface* surface = IMG_Load(fileName.c_str());
+
+if (surface) {
+texture = SDL_CreateTextureFromSurface(renderer, surface);
+SDLFreeSurface(surface);
+
+if (texture == nullptr) {
+printf("Failed to create texture: %s", SDL_GetError());
+return nullptr;
+}
+
+// Divide the texture into 16x16 pixel boxes
+int width, height;
+SDL_QueryTexture(texture, nullptr, nullptr, &width, &height);
+int numBoxesX = width / 16;
+int numBoxesY = height / 16;
+for (int y = 0; y < numBoxesY; y++) {
+for (int x = 0; x < numBoxesX; x++) {
+SDL_Rect boxRect = { x * 16, y * 16, 16, 16 };
+// You can now use the boxRect to manipulate or render each 16x16 pixel box
+// For example, you could render each box separately:
+// SDL_RenderCopy(renderer, texture, &boxRect, &boxRect);
+// Draw a light gray rectangle around each box
+SDL_Color lightGray = { 200, 200, 200, 255 }; // RGB values for light gray
+SDL_SetRenderDrawColor(renderer, lightGray.r, lightGray.g, lightGray.b, lightGray.a);
+SDL_RenderDrawRect(renderer, &boxRect);
+}
+}
+}
+else {
+printf("Failed to load image: %s", IMG_GetError());
+return nullptr;
+}
+return texture;
+}
+};
+
+class MainCharacter {
+public:
+MainCharacter(SDL_Renderer* renderer) : mainCharacterFrontTexture_(nullptr), mainCharacterFrontSprite_(nullptr) {
+mainCharacterFrontTexture = TextureManager::loadTexture("D:/PokemonProjectAssets/maincharacter_front_texture.png", renderer, nullptr); // Load the main character front texture
+if (mainCharacterFrontTexture == nullptr) {
+printf("Failed to load main character front texture: %s", SDLGetError());
+return;
+}
+
+mainCharacterFrontSprite = new Texture(mainCharacterFrontTexture, 16, 16); // Create the main character front sprite
+}
+
+~MainCharacter() {
+if (mainCharacterFrontTexture!= nullptr) {
+SDLDestroyTexture(mainCharacterFrontTexture);
+}
+if (mainCharacterFrontSprite!= nullptr) {
+delete mainCharacterFrontSprite;
+}
+}
+
+Texture* getMainCharacterFrontSprite() {
+return mainCharacterFrontSprite;
+}
+
+private:
+SDL_Texture* mainCharacterFrontTexture;
+Texture* mainCharacterFrontSprite_;
 };
 
 class Game {
 public:
-    Game();
-    ~Game();
+Game() : texture(nullptr), renderer_(nullptr), window_(nullptr), width_(0), height_(0), textureMatrix_(nullptr), isRunning_(true), mainCharacter_(nullptr) {}
 
-    bool init();
-    void handleEvents();
-    void update();
-    void render();
-    void quit();
+~Game() {
+quit();
+}
 
-    bool isRunning() { return isRunning_; }
+bool init() {
+if (SDL_Init(SDL_INIT_VIDEO)!= 0) {
+return false;
+}
+window = SDLCreateWindow(u8"Pokémon Gold", 100, 100, 320, 288, SDL_WINDOW_SHOWN);
+renderer = SDLCreateRenderer(window, -1, SDLRENDERER_ACCELERATED);
+
+mainCharacter = new MainCharacter(renderer); // Initialize the main character
+if (mainCharacter == nullptr) {
+return false;
+}
+
+texture = TextureManager::loadTexture("D:/PokemonProjectAssets/new_bark_town.png", renderer, window);
+width = 320;
+height = 288;
+
+textureMatrix = new Texture(texture, width, height);
+return true;
+}
+
+void handleEvents() { // Handle user input and other events
+SDL_Event event;
+while (SDL_PollEvent(&event)) {
+if (event.type == SDL_QUIT) {
+isRunning = false;
+}
+}
+}
+
+void update() { // Update game state, such as Pokémon positions and stats
+
+}
+
+void render() {
+SDLSetRenderDrawColor(renderer, 255, 255, 255, 255);
+SDLRenderClear(renderer);
+SDLRect rect = { 0, 0, 320, 288 };
+SDL_RenderCopy(renderer, texture, nullptr, &rect);
+
+if (mainCharacter!= nullptr) {
+Texture* mainCharacterFrontSprite = mainCharacter->getMainCharacterFrontSprite();
+if (mainCharacterFrontSprite!= nullptr) {
+SDL_Rect mainCharacterRect = { 160, 120, 16, 16 }; // example position and size
+SDL_RenderCopy(renderer, mainCharacterFrontSprite->getTexture(), nullptr, &mainCharacterRect);
+}
+}
+
+SDLColor lightGray = { 200, 200, 200, 255 }; // RGB values for light gray
+SDL_SetRenderDrawColor(renderer, lightGray.r, lightGray.g, lightGray.b, lightGray.a);
+if (textureMatrix!= nullptr) {
+for (int y = 0; y < textureMatrix->getHeight() / 16; y++) {
+for (int x = 0; x < textureMatrix->getWidth() / 16; x++) {
+Box* box = textureMatrix->getBox(x, y);
+SDLRect boxRect = { box->getX(), box->getY(), box->getWidth(), box->getHeight() };
+SDL_RenderDrawRect(renderer, &boxRect);
+}
+}
+}
+
+SDL_RenderPresent(renderer_);
+}
+
+void quit() { // Clean up resources and quit SDL
+SDL_DestroyTexture(texture_);
+SDL_DestroyRenderer(renderer_);
+SDL_DestroyWindow(window_);
+SDL_Quit();
+if (textureMatrix_!= nullptr) {
+delete textureMatrix_;
+textureMatrix_ = nullptr; // Set to nullptr after deletion
+}
+}
+
+bool isRunning() { return isRunning_; }
 
 private:
-    bool isRunning_;
-    SDL_Window* window_;
-    SDL_Renderer* renderer_;
-    // Add a texture member variable
-    SDL_Texture* texture_;
-    // Add other game variables and objects here
+bool isRunning_;
+SDL_Window* window_;
+SDL_Renderer* renderer_;
+SDL_Texture* texture_;
+int width_;
+int height_;
+Texture* textureMatrix_;
+MainCharacter* mainCharacter_; // Main character object
+// Add other game variables and objects here
 };
 
-Game::Game() : isRunning_(true) {}
-
-Game::~Game() {
-    quit();
+int main(int argc, char* argv[]) {
+if (SDL_Init(SDL_INIT_VIDEO) < 0) { // Initialize SDL
+printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
+return 1;
 }
 
-// Load the texture in the Game::init() method
-bool Game::init() {
-    // Initialize SDL and create window and renderer
-    SDL_Init(SDL_INIT_VIDEO);
-    window_ = SDL_CreateWindow(u8"Pokémon Gold", 100, 100, 320, 288, SDL_WINDOW_SHOWN);
-    renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED);
-    // Load the new_bark_town image
-    texture_ = TextureManager::loadTexture("D:/PokemonProjectAssets/new_bark_town.png", renderer_);
-    // Load necessary resources, such as textures and fonts
-    return true;
+Game game;
+if (game.init()) {
+while (game.isRunning()) {
+game.handleEvents();
+game.update();
+game.render();
+SDL_Delay(16);
 }
-
-void Game::handleEvents() {
-    // Handle user input and other events
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_QUIT) {
-            isRunning_ = false;
-        }
-    }
+game.quit(); // Call quit() to free resources
 }
-
-void Game::update() {
-    // Update game state, such as Pokémon positions and stats
+else {
+return 1;
 }
-
-// Render the texture in the Game::render() method
-void Game::render() {
-    // Set background color to white
-    SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
-    // Render game graphics, such as the game world and Pokémon
-    SDL_RenderClear(renderer_);
-        // Render the texture
-        SDL_Rect rect = { 0, 0, 320, 288 };
-    // Set the rendering rectangle
-    SDL_RenderCopy(renderer_, texture_, nullptr, &rect);
-    // Draw Pokémon and other game elements
-    SDL_RenderPresent(renderer_);
+SDL_Quit(); // Quit SDL
+return 0;
 }
-
-// Don't forget to free the texture in the Game::quit() method
-void Game::quit() {
-    // Clean up resources and quit SDL
-    SDL_DestroyTexture(texture_);
-    SDL_DestroyRenderer(renderer_);
-    SDL_DestroyWindow(window_);
-    SDL_Quit();
-}
-
-int main(int argc, char** argv) {
-    Game game;
-    if (!game.init()) {
-        return 1;
-    }
-
-    while (game.isRunning()) {
-        game.handleEvents();
-        game.update();
-        game.render();
-    }
-
-    return 0;
-}
-//End of the code
